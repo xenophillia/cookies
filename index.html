@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>consent scroll — hyper-max</title>
+  <link rel="icon" href="./navigation/favi-eye.png" type="image/svg+xml" />
+
+  <style>
+    :root {
+      --bg: #cccccc;   /* neutral gray */
+      --fg: #000000;   /* black text when eyes open */
+    }
+
+    body.dark {
+      --bg: #007bff;   /* bright blue when eyes closed */
+      --fg: #ffffff;   /* white text */
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: serif; /* default browser serif */
+      font-size: 18px;    /* bigger type overall */
+      cursor: none;       /* hide system cursor */
+      overflow: hidden;
+    }
+
+    .italic {
+      font-style: italic;
+    }
+
+    video {
+      display: none;
+    }
+
+    /* nose-controlled cursor */
+    #noseCursor {
+      position: fixed;
+      width: 32px;
+      height: 32px;
+      margin-left: -16px;
+      margin-top: -16px;
+      pointer-events: none;
+      z-index: 20;
+      background-image: url("./navigation/cursor-dollar.svg");
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+    }
+
+    /* greeting / status */
+    #greeting {
+      position: fixed;
+      left: 16px;
+      top: 12px;
+      max-width: 480px;
+      z-index: 10;
+      font-size: 20px;
+    }
+
+    #status {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      font-size: 12px;
+      opacity: 0.8;
+      z-index: 10;
+    }
+
+    /* COOKIES OVERLAY AS FULLSCREEN POPUP */
+    #cookieScreen {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35); /* dim everything */
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    #cookieCard {
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid rgba(0,0,0,0.35);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.3);
+      width: min(960px, 100%);
+      max-height: calc(100% - 48px);
+      display: flex;
+      flex-direction: column;
+      padding: 24px;
+      gap: 16px;
+    }
+
+    body.dark #cookieCard {
+      border-color: rgba(255,255,255,0.6);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.7);
+    }
+
+    #cookieTitle {
+      font-size: 22px;
+      border-bottom: 1px solid rgba(0,0,0,0.2);
+      padding-bottom: 4px;
+    }
+
+    #cookieBox {
+      flex: 1;
+      border: 1px solid rgba(0,0,0,0.4);
+      background: rgba(255,255,255,0.1);
+      padding: 16px;
+      overflow: hidden;        /* no scrolling */
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    body.dark #cookieBox {
+      border-color: rgba(255,255,255,0.6);
+      background: rgba(0,0,0,0.15);
+    }
+
+    #cookieBox p {
+      margin: 0 0 0.75em 0;
+    }
+
+    /* отдельные буквы */
+    .cookie-char {
+      transition: background-color 0.08s linear, color 0.08s linear, opacity 0.08s linear;
+    }
+
+    /* open-eyes highlight: rgb green fill, white text */
+    .cookie-char.highlighted {
+      background-color: rgb(0, 255, 0);
+      color: #ffffff;
+    }
+
+    /* closed-eyes highlight: red fill, black text */
+    body.dark .cookie-char.highlighted {
+      background-color: rgb(255, 0, 0);
+      color: #000000;
+    }
+
+    /* random soft blinking */
+    .cookie-char.blinking {
+      animation: softBlink 0.7s ease-in-out 1;
+    }
+
+    @keyframes softBlink {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.35; }
+    }
+
+    #cookieFooter {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      gap: 12px;
+      border-top: 1px solid rgba(0,0,0,0.2);
+      padding-top: 8px;
+      max-width: 100%;
+    }
+
+    body.dark #cookieFooter {
+      border-top-color: rgba(255,255,255,0.6);
+    }
+
+    #cookieHint {
+      opacity: 0.85;
+      max-width: 320px;
+    }
+
+    #continueBtn {
+      position: relative;
+      font-family: inherit;
+      font-size: 18px;
+      padding: 6px 16px;
+      background: #d4d4d4;
+      border: 1px solid #888;
+      border-radius: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      cursor: default;
+      opacity: 0.6;
+      color: #000;
+      overflow: hidden;
+      --progress: 0;
+    }
+
+    #continueBtn::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgb(0, 255, 0);
+      transform-origin: left;
+      transform: scaleX(var(--progress));
+      opacity: 0.95;
+      pointer-events: none;
+    }
+
+    #continueBtn span {
+      position: relative; /* keep label above progress bar */
+      z-index: 1;
+    }
+
+    #continueBtn.ready {
+      opacity: 1;
+    }
+
+    body.dark #continueBtn {
+      background: #004aa8;
+      border-color: #ffffff;
+      color: #ffffff;
+    }
+
+    body.dark #continueBtn.ready {
+      color: #000000;
+    }
+
+    /* hidden trace canvas for sampling (no visual output) */
+    #traceCanvas {
+      display: none;
+    }
+
+    /* overlay canvas where all gaze traces are drawn */
+    #gazeOverlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50; /* above cookie card & text */
+    }
+
+    /* floating random gifs while reading */
+    .floating-gif {
+      position: fixed;
+      width: 88px;
+      height: 31px;
+      pointer-events: none;
+      image-rendering: pixelated;
+      z-index: 45;
+      opacity: 0;
+      animation: floatFade 5s ease-out forwards;
+    }
+
+    @keyframes floatFade {
+      0%   { opacity: 0; transform: translateY(10px); }
+      10%  { opacity: 1; transform: translateY(0); }
+      80%  { opacity: 1; }
+      100% { opacity: 0; transform: translateY(-10px); }
+    }
+
+    /* green flash when reading completes */
+    #flashOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgb(0,255,0);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 60;
+      transition: opacity 0.15s ease-out;
+    }
+  </style>
+</head>
+<body>
+  <div id="greeting">Loading…</div>
+  <div id="status">Waiting for camera permission…</div>
+
+  <!-- COOKIES OVERLAY -->
+  <div id="cookieScreen">
+    <div id="cookieCard">
+      <div id="cookieTitle" class="italic">
+        cookie consent &amp; gaze participation agreement
+      </div>
+
+      <div id="cookieBox">
+        <p>
+          This experiment treats the cookie banner not as a disposable pop-up but
+          as the actual entrance to the work. By remaining on this page you agree
+          that your gaze, micro-movements, and approximate location may be logged
+          on a local Raspberry&nbsp;Pi and used purely for research and artistic
+          reflection. In order to proceed, this notice has to be
+          <span class="italic">visually traversed</span> from top to bottom.
+        </p>
+        <p>
+          While you read, the system quietly records a few things: how long the
+          session lasts, which region of the world you connect from, and a small
+          path tracing how your attention drifts across the screen. No legal name,
+          login, or account is required; your presence is registered only as a
+          pattern of looking, a minor fluctuation in a dataset of blinks and
+          hesitations.
+        </p>
+        <p>
+          Instead of the usual scroll-wheel gesture, your face controls a proxy
+          cursor. As the cursor sweeps across the letters, they light up in
+          response, slowly filling a badge at the bottom of the window. The badge
+          becomes a proof of having stayed with this text long enough for the
+          system to believe you have read it.
+        </p>
+        <p>
+          No advertising network is contacted; no data leaves the Raspberry&nbsp;Pi;
+          nothing is sold. Yet the structure is still recognisable as part of the
+          wider gaze economy in which our attention is continuously translated into
+          value. This page simply slows that translation down and lets you dwell
+          inside the moment when consent is usually reduced to a single impatient
+          click.
+        </p>
+        <p>
+          If this arrangement feels uncomfortable, you are free to withdraw simply
+          by closing the tab. Otherwise, once you have illuminated enough of these
+          letters, the badge will turn fully green and the traces of your reading
+          will be quietly grafted onto the screen, alongside those who came before.
+        </p>
+      </div>
+
+      <div id="cookieFooter">
+        <span id="cookieHint">
+          Gently move your head so the cursor washes across the text.
+          Each lit letter fills the <span class="italic">NEXT →</span> bar.
+          Blink to invert the colours.
+        </span>
+        <button id="continueBtn" disabled><span>next →</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- overlay for accumulated gaze traces -->
+  <canvas id="gazeOverlay"></canvas>
+
+  <!-- green flash layer -->
+  <div id="flashOverlay"></div>
+
+  <div id="noseCursor"></div>
+
+  <canvas id="traceCanvas"></canvas>
+  <video id="video" playsinline></video>
+
+  <audio
+    id="successSound"
+    src="./sounds/purchase-succesful-ingame-230550.mp3"
+    preload="auto"></audio>
+  <audio
+    id="alarmSound"
+    src="./sounds/default-iphone-alarm-ringtonesf.com.mp3"
+    preload="auto"></audio>
+
+  <script type="module">
+    import {
+      FilesetResolver,
+      FaceLandmarker,
+    } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+    const greetingEl   = document.getElementById("greeting");
+    const statusEl     = document.getElementById("status");
+    const videoEl      = document.getElementById("video");
+    const noseCursorEl = document.getElementById("noseCursor");
+    const bodyEl       = document.body;
+
+    const cookieBox    = document.getElementById("cookieBox");
+    const continueBtn  = document.getElementById("continueBtn");
+    const cookieHintEl = document.getElementById("cookieHint");
+    const successSound = document.getElementById("successSound");
+    const alarmSound   = document.getElementById("alarmSound");
+    const flashOverlay = document.getElementById("flashOverlay");
+
+    const gazeCanvas   = document.getElementById("gazeOverlay");
+    const gazeCtx      = gazeCanvas.getContext("2d");
+
+    const traceCanvas  = document.getElementById("traceCanvas");
+    const traceCtx     = traceCanvas.getContext("2d");
+
+    const LOCAL_TRACES_KEY = "hypermax_cookie_gaze_traces";
+
+    // ===== VIBES GIFS (random from ./vibes/<folder>/<folder>01..NN.gif) =====
+    const VIBE_FOLDERS = ["anime", "chic", "cute", "cyber", "goth", "retro", "sex", "weirdo"];
+
+    // Set this to a safe upper bound; missing numbers are handled via retry onerror.
+    const VIBE_MAX_NUM = 80;
+
+    function randomVibeGifSrc() {
+      const folder = VIBE_FOLDERS[Math.floor(Math.random() * VIBE_FOLDERS.length)];
+      const n = 1 + Math.floor(Math.random() * VIBE_MAX_NUM);
+      const nn = String(n).padStart(2, "0");
+      return `./vibes/${folder}/${folder}${nn}.gif`;
+    }
+
+    // ===== SESSION METADATA =====
+    const sessionStart     = performance.now();
+    const sessionStartDate = new Date();
+    const sessionStartIso  = sessionStartDate.toISOString();
+
+    const sessionId =
+      (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2, 10);
+
+    let userLocationName = "somewhere on Earth";
+
+    // tiny trace path (sampled points), невидимый
+    const tracePath = [];
+    let lastTraceSampleTime = 0;
+
+    // all stored traces from previous readings
+    let storedTraces = [];
+
+    // ===== 1. Greeting text (time of day + location) =====
+    function getTimeWord(date = new Date()) {
+      const h = date.getHours();
+      if (h >= 5 && h < 12) return "Good morning";
+      if (h >= 12 && h < 18) return "Good afternoon";
+      if (h >= 18 && h < 22) return "Good evening";
+      return "Good night";
+    }
+
+    async function setGreeting() {
+      const timeWord = getTimeWord();
+      let place = "somewhere on Earth";
+
+      try {
+        const res = await fetch("https://ipapi.co/json/");
+        if (res.ok) {
+          const data = await res.json();
+          const city = data.city;
+          const country = data.country_name;
+          if (city && country) place = `${city}, ${country}`;
+          else if (country)     place = country;
+        }
+      } catch (err) {
+        // ignore, fallback stays
+      }
+
+      userLocationName = place;
+
+      greetingEl.innerHTML =
+        `<span class="italic">${timeWord}</span> to our valued visitor from ` +
+        `<span class="italic">${place}</span>. ` +
+        `Guide the cursor across the consent text to light it up.`;
+    }
+
+    setGreeting();
+
+    // ===== stored traces persistence =====
+    function loadStoredTraces() {
+      storedTraces = [];
+      try {
+        const raw = localStorage.getItem(LOCAL_TRACES_KEY);
+        if (raw) storedTraces = JSON.parse(raw) || [];
+      } catch (_) {
+        storedTraces = [];
+      }
+    }
+
+    function saveStoredTraces() {
+      try {
+        localStorage.setItem(LOCAL_TRACES_KEY, JSON.stringify(storedTraces));
+      } catch (_) {}
+    }
+
+    function drawAllTraces() {
+      const dpr = window.devicePixelRatio || 1;
+      gazeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      gazeCtx.clearRect(0, 0, gazeCanvas.width / dpr, gazeCanvas.height / dpr);
+
+      gazeCtx.lineWidth = 1;
+      gazeCtx.strokeStyle = "#000000";
+      gazeCtx.globalAlpha = 0.7;
+
+      storedTraces.forEach((trace) => {
+        if (!Array.isArray(trace) || trace.length < 2) return;
+        gazeCtx.beginPath();
+        gazeCtx.moveTo(trace[0].x, trace[0].y);
+        for (let i = 1; i < trace.length; i++) {
+          gazeCtx.lineTo(trace[i].x, trace[i].y);
+        }
+        gazeCtx.stroke();
+      });
+
+      gazeCtx.globalAlpha = 1;
+    }
+
+    // ===== 2. Viewport + canvases =====
+    let viewportWidth = window.innerWidth;
+    let viewportHeight = window.innerHeight;
+
+    function resizeAll() {
+      viewportWidth = window.innerWidth;
+      viewportHeight = window.innerHeight;
+
+      const dpr = window.devicePixelRatio || 1;
+
+      traceCanvas.width  = viewportWidth  * dpr;
+      traceCanvas.height = viewportHeight * dpr;
+      traceCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      traceCtx.clearRect(0, 0, viewportWidth, viewportHeight);
+
+      gazeCanvas.width  = viewportWidth * dpr;
+      gazeCanvas.height = viewportHeight * dpr;
+
+      drawAllTraces();
+    }
+
+    window.addEventListener("resize", resizeAll);
+    loadStoredTraces();
+    resizeAll();
+
+    // ===== 3. Wrap cookie text into spans (letter by letter) =====
+    function wrapNode(node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent;
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < text.length; i++) {
+          const ch = text[i];
+          if (ch === " " || ch === "\n" || ch === "\t") {
+            frag.appendChild(document.createTextNode(ch));
+          } else {
+            const span = document.createElement("span");
+            span.className = "cookie-char";
+            span.textContent = ch;
+            frag.appendChild(span);
+          }
+        }
+        node.parentNode.replaceChild(frag, node);
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const children = Array.from(node.childNodes);
+        for (const child of children) wrapNode(child);
+      }
+    }
+
+    wrapNode(cookieBox);
+
+    const allCookieChars = cookieBox.querySelectorAll(".cookie-char");
+    const totalCookieChars = allCookieChars.length || 1;
+    let highlightedCount = 0;
+
+    // --- assign word ids for blinking ---
+    function assignWordIds(root) {
+      let currentWordId = 0;
+
+      function walk(node) {
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        let child = node.firstChild;
+        let inWord = false;
+
+        while (child) {
+          if (child.nodeType === Node.ELEMENT_NODE &&
+              child.classList.contains("cookie-char")) {
+            if (!inWord) {
+              currentWordId++;
+              inWord = true;
+            }
+            child.dataset.wordId = String(currentWordId);
+
+            const next = child.nextSibling;
+            if (next && next.nodeType === Node.TEXT_NODE && /\s/.test(next.textContent)) {
+              inWord = false;
+            }
+          } else if (child.nodeType === Node.TEXT_NODE) {
+            if (/\s/.test(child.textContent)) {
+              inWord = false;
+            }
+          }
+
+          if (child.firstChild) walk(child);
+          child = child.nextSibling;
+        }
+      }
+
+      walk(root);
+    }
+
+    assignWordIds(cookieBox);
+
+    // group letters by word
+    const wordsMap = {};
+    allCookieChars.forEach((ch) => {
+      const id = ch.dataset.wordId;
+      if (!id) return;
+      if (!wordsMap[id]) wordsMap[id] = [];
+      wordsMap[id].push(ch);
+    });
+    const wordIds = Object.keys(wordsMap);
+
+    // random word blinking
+    function startRandomBlinking() {
+      if (!wordIds.length) return;
+      setInterval(() => {
+        const id = wordIds[Math.floor(Math.random() * wordIds.length)];
+        const chars = wordsMap[id];
+        if (!chars) return;
+        chars.forEach((span) => {
+          span.classList.add("blinking");
+          span.addEventListener("animationend", () => {
+            span.classList.remove("blinking");
+          }, { once: true });
+        });
+      }, 500 + Math.random() * 800); // irregular rhythm
+    }
+    startRandomBlinking();
+
+    // ===== 4. COOKIES: progress based on highlighted letters =====
+    let readingCompleted = false;
+
+    function setCookieProgress(p) {
+      const clamped = Math.max(0, Math.min(1, p));
+      continueBtn.style.setProperty("--progress", clamped.toString());
+      if (!readingCompleted && clamped >= 0.999) {
+        markReadingComplete();
+      }
+    }
+
+    function flashGreen() {
+      flashOverlay.style.opacity = "1";
+      setTimeout(() => {
+        flashOverlay.style.opacity = "0";
+      }, 150);
+    }
+
+    function spawnFloatingGif() {
+      const img = document.createElement("img");
+      img.className = "floating-gif";
+      img.alt = "";
+
+      const w = 88;
+      const h = 31;
+      const x = Math.random() * (window.innerWidth - w);
+      const y = Math.random() * (window.innerHeight - h);
+
+      img.style.left = `${x}px`;
+      img.style.top  = `${y}px`;
+
+      // retry a few times in case a number doesn't exist in a folder
+      let tries = 0;
+      const MAX_TRIES = 12;
+
+      function trySetSrc() {
+        tries++;
+        img.src = randomVibeGifSrc();
+      }
+
+      img.onerror = () => {
+        if (tries < MAX_TRIES) trySetSrc();
+        else img.remove();
+      };
+
+      trySetSrc();
+      document.body.appendChild(img);
+      setTimeout(() => img.remove(), 5200);
+    }
+
+    function highlightCharUnderGaze(x, y) {
+      // large hover area, easier to "read" through
+      const offsets = [
+        [0, 0],
+        [-24, 0],
+        [24, 0],
+        [0, -24],
+        [0, 24],
+        [-36, 0],
+        [36, 0],
+        [0, -36],
+        [0, 36],
+        [-24, -24],
+        [24, -24],
+        [-24, 24],
+        [24, 24],
+        [-40, -12],
+        [40, -12],
+        [-40, 12],
+        [40, 12]
+      ];
+
+      let newlyHighlighted = 0;
+
+      for (const [dx, dy] of offsets) {
+        const el = document.elementFromPoint(x + dx, y + dy);
+        if (!el) continue;
+        if (el.classList && el.classList.contains("cookie-char")) {
+          if (!el.classList.contains("highlighted")) {
+            el.classList.add("highlighted");
+            newlyHighlighted++;
+          }
+        }
+      }
+
+      if (newlyHighlighted > 0) {
+        highlightedCount += newlyHighlighted;
+        const progress = highlightedCount / totalCookieChars;
+        setCookieProgress(progress);
+
+        // occasionally spawn floating gifs
+        if (Math.random() < 0.08) {
+          spawnFloatingGif();
+        }
+      }
+    }
+
+    function markReadingComplete() {
+      if (readingCompleted) return;
+      readingCompleted = true;
+
+      continueBtn.disabled = true;
+      continueBtn.classList.add("ready");
+      cookieHintEl.textContent =
+        "Thank you. Your reading trace has been added to the screen.";
+
+      // 1) flash green
+      flashGreen();
+
+      // 2) play completion sound once
+      try {
+        successSound.currentTime = 0;
+        successSound.play().catch(() => {});
+      } catch (_) {}
+
+      // 3) store current trace and redraw
+      if (tracePath.length > 1) {
+        storedTraces.push(tracePath.slice()); // shallow copy
+        saveStoredTraces();
+        drawAllTraces();
+      }
+
+      // 4) send to log.php as before
+      const payload = {
+        type: "cookies_complete",
+        timestamp: new Date().toISOString(),
+        sessionId,
+        sessionStartIso,
+        durationMs: Math.round(performance.now() - sessionStart),
+        location: userLocationName,
+        trace: tracePath
+      };
+
+      fetch("log.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }).catch((err) => {
+        console.error("Error sending cookies_complete log:", err);
+      });
+    }
+
+    // secret shortcut still works: O to auto-complete reading
+    window.addEventListener("keydown", (ev) => {
+      if (ev.key === "o" || ev.key === "O") {
+        allCookieChars.forEach((ch) => ch.classList.add("highlighted"));
+        highlightedCount = totalCookieChars;
+        setCookieProgress(1);
+        markReadingComplete();
+      }
+    });
+
+    // ===== 5. Face landmarker setup (nose cursor + blink theme + alarm) =====
+    let faceLandmarker = null;
+    let running = false;
+    let stream = null;
+    let lastVideoTime = -1;
+
+    const FACE_GAIN_X = 7;
+    const FACE_GAIN_Y = 6;
+    const FACE_SMOOTHING = 0.4;
+
+    let hasSmoothed = false;
+    let smoothX = 0;
+    let smoothY = 0;
+
+    const EAR_THRESHOLD = 0.20;
+    let wasEyesClosed = false;
+    let eyesClosedStart = 0;
+    let alarmPlaying = false;
+
+    function distance(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return Math.hypot(dx, dy);
+    }
+
+    function eyeAspectRatio(landmarks, top, bottom, left, right) {
+      const v = distance(landmarks[top], landmarks[bottom]);
+      const h = distance(landmarks[left], landmarks[right]);
+      return v / h;
+    }
+
+    function stopAlarm() {
+      try {
+        alarmSound.pause();
+        alarmSound.currentTime = 0;
+      } catch (_) {}
+      alarmPlaying = false;
+    }
+
+    async function initFaceLandmarker() {
+      statusEl.textContent = "Loading face model…";
+
+      const filesetResolver = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+      );
+
+      faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+        baseOptions: {
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        },
+        runningMode: "VIDEO",
+        numFaces: 1,
+        outputFaceBlendshapes: false,
+      });
+
+      statusEl.textContent = "Starting camera…";
+      await startCamera();
+    }
+
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480 },
+          audio: false,
+        });
+        videoEl.srcObject = stream;
+        await videoEl.play();
+
+        running = true;
+        statusEl.textContent =
+          "Camera on. Move your head to steer the cursor; lit letters fill NEXT →. Blink to invert colours.";
+        requestAnimationFrame(loop);
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "Camera error or permission denied.";
+      }
+    }
+
+    function loop() {
+      if (!running || !faceLandmarker) return;
+
+      const now = performance.now();
+
+      if (videoEl.readyState >= 2) {
+        if (lastVideoTime !== videoEl.currentTime) {
+          const result = faceLandmarker.detectForVideo(videoEl, now);
+
+          if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
+            const lm = result.faceLandmarks[0];
+
+            // blink detection (EAR)
+            const leftEAR  = eyeAspectRatio(lm, 159, 145, 33, 133);
+            const rightEAR = eyeAspectRatio(lm, 386, 374, 362, 263);
+            const ear = (leftEAR + rightEAR) / 2;
+            const eyesClosed = ear < EAR_THRESHOLD;
+
+            if (eyesClosed && !wasEyesClosed) {
+              bodyEl.classList.add("dark");
+              eyesClosedStart = now;
+            }
+            if (!eyesClosed && wasEyesClosed) {
+              bodyEl.classList.remove("dark");
+              stopAlarm();
+            }
+
+            if (eyesClosed) {
+              if (!alarmPlaying && now - eyesClosedStart > 3000) {
+                try {
+                  alarmSound.currentTime = 0;
+                  alarmSound.play().catch(() => {});
+                  alarmPlaying = true;
+                } catch (_) {}
+              }
+            }
+
+            wasEyesClosed = eyesClosed;
+
+            // nose-controlled cursor
+            const NOSE_INDEX = 4;
+            const n = lm[NOSE_INDEX];
+
+            const nx = 1.0 - n.x;
+            const ny = n.y;
+
+            let dx = (nx - 0.5) * FACE_GAIN_X;
+            let dy = (ny - 0.5) * FACE_GAIN_Y;
+
+            let targetX = viewportWidth  / 2 + dx * (viewportWidth  / 2);
+            let targetY = viewportHeight / 2 + dy * (viewportHeight / 2);
+
+            targetX = Math.max(0, Math.min(viewportWidth,  targetX));
+            targetY = Math.max(0, Math.min(viewportHeight, targetY));
+
+            if (!hasSmoothed) {
+              smoothX = targetX;
+              smoothY = targetY;
+              hasSmoothed = true;
+            } else {
+              smoothX = smoothX + (targetX - smoothX) * FACE_SMOOTHING;
+              smoothY = smoothY + (targetY - smoothY) * FACE_SMOOTHING;
+            }
+
+            noseCursorEl.style.transform =
+              `translate3d(${smoothX}px, ${smoothY}px, 0)`;
+
+            // highlight letters under gaze with larger hover area
+            highlightCharUnderGaze(smoothX, smoothY);
+
+            // sample trace path every 100ms
+            if (now - lastTraceSampleTime > 100) {
+              const t = Math.round(now - sessionStart);
+              tracePath.push({
+                t,
+                x: Number(smoothX.toFixed(1)),
+                y: Number(smoothY.toFixed(1))
+              });
+              lastTraceSampleTime = now;
+            }
+
+            statusEl.textContent =
+              "Camera on. Sweep the cursor over the text to light it up. Blink to invert.";
+          } else {
+            statusEl.textContent = "Face not visible — move closer.";
+          }
+
+          lastVideoTime = videoEl.currentTime;
+        }
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    initFaceLandmarker();
+  </script>
+</body>
+</html>
